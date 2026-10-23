@@ -1,0 +1,31 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+**/vendor/
+**/node_modules/
+
+# Generated frontend files
+**/.next/
+**/out/
+**/build/
+**/dist/
+**/coverage/
+
+# Databases and logs
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Laravel and testing cache
+**/.phpunit.result.cache
+**/.phpunit.cache/
+
+# Local editor and operating system files
+.DS_Store
+Thumbs.db
+.idea/
+.fleet/
