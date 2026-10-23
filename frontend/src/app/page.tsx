@@ -60,7 +60,7 @@ export default function HomePage() {
       {/* ============================ HERO ============================ */}
       <section className="relative min-h-screen flex flex-col">
         <Image
-          src="/images/background.png"
+          src="/images/background1.png"
           alt=""
           fill
           priority
