@@ -33,6 +33,7 @@ export interface UserLite {
   name: string;
   email?: string;
   role?: Role;
+  department?: string | null;
 }
 
 export interface Ticket {

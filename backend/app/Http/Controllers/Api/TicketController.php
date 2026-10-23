@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ticket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class TicketController extends Controller
 {
@@ -134,7 +135,10 @@ class TicketController extends Controller
         }
 
         $validated = Validator::make($request->all(), [
-            'assignee_id' => ['required', 'exists:users,id'],
+            'assignee_id' => [
+                'required',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('role', 'ict_officer')),
+            ],
         ])->validate();
 
         $ticket->assignee_id = $validated['assignee_id'];

@@ -1,14 +1,7 @@
-import axios from 'axios';
 import api from './api';
 import type { User } from './types';
 
-const apiRoot = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api').replace(/\/api$/, '');
-
 export async function login(email: string, password: string) {
-  await axios.get(`${apiRoot}/sanctum/csrf-cookie`, {
-    withCredentials: true,
-  });
-
   const { data } = await api.post<{ user: User; token: string }>(
     '/auth/login',
     { email, password }

@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\TicketController;
 use App\Http\Controllers\Api\TicketCommentController;
+use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -17,6 +18,9 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('users', [UserController::class, 'index'])
+        ->middleware('role:admin');
+
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 
     Route::apiResource('tickets', TicketController::class);
