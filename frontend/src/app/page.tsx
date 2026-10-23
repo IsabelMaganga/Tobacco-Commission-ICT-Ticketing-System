@@ -84,9 +84,9 @@ export default function HomePage() {
                 />
               </div>
               <div className="leading-tight">
-                <p className="text-white font-bold text-lg">TCTFS</p>
+                <p className="text-white font-bold text-lg">TCITS</p>
                 <p className="text-xs text-white/70">
-                  Tobacco Commission · Ticket Fault System
+                  Tobacco Commission · IT Ticketing System
                 </p>
               </div>
             </Link>
@@ -105,11 +105,11 @@ export default function HomePage() {
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 w-full">
             <div className="max-w-3xl">
               <span className="inline-flex items-center rounded-full bg-green-500/20 text-green-100 text-xs font-medium px-3 py-1 border border-green-400/30 backdrop-blur">
-                Official ICT Fault System
+                Official ICT Ticketing System
               </span>
 
               <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">
-                The Tobacco Commission Ticket Fault System
+                The Tobacco Commission IT Ticketing System
               </h1>
 
               <p className="mt-6 text-lg text-white/80 max-w-2xl">
@@ -221,7 +221,7 @@ export default function HomePage() {
             </div>
             <div>
               <p className="text-white font-medium">The Tobacco Commission</p>
-              <p className="text-xs">Ticket Fault System (TCTFS)</p>
+              <p className="text-xs">IT Ticketing System (TCITS)</p>
             </div>
           </div>
           <p className="text-xs">
