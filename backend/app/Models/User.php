@@ -6,6 +6,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -68,6 +69,11 @@ class User extends Authenticatable
         return $this->hasMany(Ticket::class, 'assignee_id');
     }
 
+    public function supportGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(SupportGroup::class)->withPivot(['max_ticket_capacity', 'availability'])->withTimestamps();
+    }
+
     /** Comments this user made on tickets. */
     public function comments(): HasMany
     {
@@ -80,28 +86,33 @@ class User extends Authenticatable
 
     public function isAdmin(): bool
     {
-        return $this->role === 'admin';
+        return in_array($this->role, ['admin', 'manager'], true);
+    }
+
+    public function isManager(): bool
+    {
+        return in_array($this->role, ['admin', 'manager'], true);
     }
 
     public function isIctOfficer(): bool
     {
-        return $this->role === 'ict_officer';
+        return in_array($this->role, ['ict_officer', 'tier_1', 'tier_2_3'], true);
     }
 
     public function isStaff(): bool
     {
-        return $this->role === 'staff';
+        return in_array($this->role, ['staff', 'requester'], true);
     }
 
     /** Can this user see internal-only comments? */
     public function canSeeInternalComments(): bool
     {
-        return $this->isAdmin() || $this->isIctOfficer();
+        return $this->isManager() || $this->isIctOfficer();
     }
 
     /** Can this user assign tickets to other users? */
     public function canAssignTickets(): bool
     {
-        return $this->isAdmin() || $this->isIctOfficer();
+        return $this->isManager() || $this->isIctOfficer();
     }
 }

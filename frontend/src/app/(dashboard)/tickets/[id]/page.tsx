@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -9,6 +9,7 @@ import { PriorityBadge, StatusBadge } from '@/components/TicketBadges';
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const isOfficer = user?.role === 'ict_officer' || user?.role === 'admin';
   const isAdmin = user?.role === 'admin';
@@ -20,6 +21,7 @@ export default function TicketDetailPage() {
   const [body, setBody] = useState('');
   const [internal, setInternal] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -30,9 +32,11 @@ export default function TicketDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
-  // Admin reassign dropdown. Needs GET /api/users?role=ict_officer on the backend; fails quietly if absent.
   useEffect(() => {
     if (!isAdmin) return;
     api.get('/users', { params: { role: 'ict_officer' } })
@@ -61,6 +65,19 @@ export default function TicketDetailPage() {
   const setStatus = (status: TicketStatus) =>
     run(() => (status === 'resolved' ? api.patch(`/tickets/${id}/resolve`) : api.patch(`/tickets/${id}`, { status })));
   const removeComment = (cid: number) => run(() => api.delete(`/tickets/${id}/comments/${cid}`));
+  const deleteTicket = async () => {
+    if (!window.confirm('Delete this ticket permanently?')) return;
+
+    setDeleting(true);
+    setActionError('');
+    try {
+      await api.delete(`/tickets/${id}`);
+      router.push('/tickets');
+    } catch {
+      setActionError('The ticket could not be deleted. Please try again.');
+      setDeleting(false);
+    }
+  };
 
   if (error) return <div className="mx-auto max-w-3xl px-4 py-8"><p role="alert" className="rounded-md bg-red-50 p-3 text-red-700">{error}</p><Link href="/tickets" className="mt-3 inline-block text-sm underline">Back to tickets</Link></div>;
   if (!ticket) return <p className="px-4 py-8 text-sm text-gray-500">Loading ticket…</p>;
@@ -77,8 +94,22 @@ export default function TicketDetailPage() {
       <Link href="/tickets" className="text-sm text-gray-500 hover:underline">← All tickets</Link>
 
       <header>
-        <p className="text-sm font-medium text-gray-500">{ticket.ticket_number}</p>
-        <h1 className="mt-1 text-2xl font-semibold text-gray-900">{ticket.title}</h1>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-gray-500">{ticket.ticket_number}</p>
+            <h1 className="mt-1 text-2xl font-semibold text-gray-900">{ticket.title}</h1>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              disabled={deleting || busy}
+              onClick={deleteTicket}
+              className="shrink-0 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete ticket'}
+            </button>
+          )}
+        </div>
         <div className="mt-3 flex gap-2"><StatusBadge status={ticket.status} /><PriorityBadge priority={ticket.priority} /></div>
       </header>
 
@@ -116,6 +147,9 @@ export default function TicketDetailPage() {
                   {officers.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </select>
               </div>
+            )}
+            {isAdmin && officers.length === 0 && (
+              <p className="text-sm text-gray-500">No ICT officers are available for assignment.</p>
             )}
           </div>
         </section>

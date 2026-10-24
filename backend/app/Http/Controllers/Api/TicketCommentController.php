@@ -27,6 +27,10 @@ class TicketCommentController extends Controller
             'is_internal' => ['sometimes', 'boolean'],
         ])->validate();
 
+        if (($validated['is_internal'] ?? false) && ! $user->canSeeInternalComments()) {
+            abort(403, 'Only ICT support staff can add internal notes.');
+        }
+
         $comment = $ticket->comments()->create([
             'user_id' => $user->id,
             'body' => $validated['body'],

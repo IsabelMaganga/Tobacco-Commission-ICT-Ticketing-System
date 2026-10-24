@@ -12,18 +12,26 @@ class Ticket extends Model
     use HasFactory;
 
     protected $fillable = [
-        'ticket_number', 'title', 'description', 'category',
-        'priority', 'status', 'reporter_id', 'assignee_id',
-        'department', 'resolved_at',
+        'ticket_number', 'title', 'description', 'category_id', 'priority', 'urgency',
+        'impact', 'status', 'requester_id', 'assignee_id', 'assigned_group_id',
+        'sla_response_deadline', 'sla_resolution_deadline', 'sla_response_status',
+        'sla_resolution_status', 'resolution_notes', 'pending_reason', 'resolved_at',
     ];
 
     protected $casts = [
         'resolved_at' => 'datetime',
+        'sla_response_deadline' => 'datetime',
+        'sla_resolution_deadline' => 'datetime',
     ];
+
+    public function requester(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'requester_id');
+    }
 
     public function reporter(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'reporter_id');
+        return $this->requester();
     }
 
     public function assignee(): BelongsTo
@@ -34,6 +42,11 @@ class Ticket extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(TicketComment::class);
+    }
+
+    public function interactions(): HasMany
+    {
+        return $this->hasMany(TicketInteraction::class);
     }
 
     /** Auto-generate a unique ticket number like TC-2026-00001 */

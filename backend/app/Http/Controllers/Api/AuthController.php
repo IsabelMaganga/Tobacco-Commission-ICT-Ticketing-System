@@ -16,7 +16,6 @@ class AuthController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['nullable', 'in:staff,ict_officer,admin'],
             'department' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:255'],
         ]);
@@ -32,7 +31,7 @@ class AuthController extends Controller
             'name' => $request->name,
             'email' => strtolower($request->email),
             'password' => Hash::make($request->password),
-            'role' => $request->role ?? 'staff',
+            'role' => 'requester',
             'department' => $request->department,
             'phone' => $request->phone,
         ]);

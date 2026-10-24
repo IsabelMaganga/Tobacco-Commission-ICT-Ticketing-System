@@ -1,4 +1,4 @@
-export type Role = 'staff' | 'ict_officer' | 'admin';
+export type Role = 'requester' | 'tier_1' | 'tier_2_3' | 'manager' | 'staff' | 'ict_officer' | 'admin';
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
 export type TicketCategory =
