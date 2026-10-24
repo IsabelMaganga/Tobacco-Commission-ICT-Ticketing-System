@@ -38,6 +38,20 @@ textarea::placeholder {
 
 ::selection { background: #d9b85a; color: #0b5d43; }
 
+.admin-submenu {
+  scrollbar-width: thin;
+  scrollbar-color: #d9b85a transparent;
+}
+
+.admin-submenu::-webkit-scrollbar {
+  width: 5px;
+}
+
+.admin-submenu::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #d9b85a;
+}
+
 @media (max-width: 767.98px) {
   body {
     padding-bottom: 80px;
