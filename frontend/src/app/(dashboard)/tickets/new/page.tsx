@@ -5,11 +5,11 @@ import axios from 'axios';
 import api from '@/lib/api';
 import { CATEGORIES, PRIORITIES, Ticket, label } from '@/lib/ticket-types';
 
-type Errors = Partial<Record<'title' | 'description' | 'category' | 'priority' | 'department', string>>;
+type Errors = Partial<Record<'title' | 'description' | 'category' | 'priority' | 'department' | 'urgency' | 'impact', string>>;
 
 export default function NewTicketPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ title: '', description: '', category: 'hardware', priority: 'medium', department: '' });
+  const [form, setForm] = useState({ title: '', description: '', category: 'hardware', priority: 'medium', urgency: 'medium', impact: 'medium', department: '' });
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -87,11 +87,18 @@ export default function NewTicketPage() {
             {err(errors.category)}
           </div>
           <div>
-            <label htmlFor="priority" className="text-sm font-medium text-gray-800">Priority</label>
-            <select id="priority" value={form.priority} onChange={set('priority')} className={field}>
-              {PRIORITIES.map((p) => <option key={p} value={p}>{label(p)}</option>)}
+            <label htmlFor="urgency" className="text-sm font-medium text-gray-800">Urgency</label>
+            <select id="urgency" value={form.urgency} onChange={set('urgency')} className={field}>
+              {['low', 'medium', 'high'].map((value) => <option key={value} value={value}>{label(value)}</option>)}
             </select>
-            {err(errors.priority)}
+            {err(errors.urgency)}
+          </div>
+          <div>
+            <label htmlFor="impact" className="text-sm font-medium text-gray-800">Impact</label>
+            <select id="impact" value={form.impact} onChange={set('impact')} className={field}>
+              {['low', 'medium', 'high'].map((value) => <option key={value} value={value}>{label(value)}</option>)}
+            </select>
+            {err(errors.impact)}
           </div>
         </div>
 

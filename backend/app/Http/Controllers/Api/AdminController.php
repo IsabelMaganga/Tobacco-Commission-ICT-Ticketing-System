@@ -13,6 +13,8 @@ use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
@@ -32,6 +34,77 @@ class AdminController extends Controller
     public function indexSlas()
     {
         return response()->json(['data' => SlaPolicy::orderBy('priority')->get()]);
+    }
+
+    public function indexBusinessHours()
+    {
+        return response()->json(['data' => BusinessHour::orderBy('day_of_week')->get()]);
+    }
+
+    public function indexHolidays()
+    {
+        return response()->json(['data' => Holiday::orderBy('holiday_date')->get()]);
+    }
+
+    public function indexRoutingRules()
+    {
+        return response()->json(['data' => RoutingRule::with('targetGroup')->orderBy('priority')->get()]);
+    }
+
+    public function indexGroups()
+    {
+        return response()->json(['data' => SupportGroup::withCount('users')->orderBy('name')->get()]);
+    }
+
+    public function workload()
+    {
+        $users = User::query()
+            ->whereIn('role', ['tier_1', 'tier_2_3', 'ict_officer'])
+            ->with(['supportGroups:id,name'])
+            ->withCount(['assignedTickets as active_ticket_count' => fn ($query) => $query->whereNotIn('status', ['RESOLVED', 'CLOSED'])])
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'role']);
+
+        return response()->json(['data' => $users->map(function ($user) {
+            return [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'active_ticket_count' => $user->active_ticket_count,
+                'groups' => $user->supportGroups->map(fn ($group) => [
+                    'id' => $group->id,
+                    'name' => $group->name,
+                    'availability' => $group->pivot->availability,
+                    'max_ticket_capacity' => $group->pivot->max_ticket_capacity,
+                ]),
+            ];
+        })]);
+    }
+
+    public function onboardUser(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8'],
+            'role' => ['required', Rule::in(['REQUESTER', 'TIER_1', 'TIER_2_3', 'MANAGER'])],
+            'department' => ['nullable', 'string', 'max:255'],
+            'group_ids' => ['sometimes', 'array'],
+            'group_ids.*' => ['integer', 'exists:groups,id'],
+        ]);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => strtolower($data['email']),
+            'password' => Hash::make($data['password']),
+            'role' => strtolower($data['role']),
+            'department' => $data['department'] ?? null,
+        ]);
+        $user->supportGroups()->sync($data['group_ids'] ?? []);
+        $this->audit($request, 'user.onboarded', $user, ['role' => $data['role'], 'group_ids' => $data['group_ids'] ?? []]);
+
+        return response()->json(['data' => $user->load('supportGroups')], 201);
     }
 
     public function storeBusinessHour(Request $request)
@@ -119,6 +192,56 @@ class AdminController extends Controller
         return response()->noContent();
     }
 
+    public function interveneTicket(Request $request, Ticket $ticket)
+    {
+        $data = $request->validate([
+            'title' => ['sometimes', 'string', 'max:150'],
+            'description' => ['sometimes', 'string'],
+            'status' => ['sometimes', Rule::in(['NEW', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED'])],
+            'priority' => ['sometimes', Rule::in(['low', 'medium', 'high', 'critical'])],
+            'category_id' => ['sometimes', 'nullable', 'exists:categories,id'],
+            'assignee_id' => ['sometimes', 'nullable', 'exists:users,id'],
+            'assigned_group_id' => ['sometimes', 'nullable', 'exists:groups,id'],
+        ]);
+        $before = $ticket->only(array_keys($data));
+        $ticket->fill($data);
+        if (($data['status'] ?? null) === 'RESOLVED' && ! $ticket->resolved_at) {
+            $ticket->resolved_at = now();
+        }
+        $ticket->save();
+        $this->audit($request, 'ticket.admin_intervention', $ticket, ['before' => $before, 'after' => $data]);
+        return response()->json(['data' => $ticket->fresh()->load(['requester', 'assignee', 'interactions.author'])]);
+    }
+
+    public function pauseSla(Request $request, Ticket $ticket)
+    {
+        $data = $request->validate([
+            'paused' => ['required', 'boolean'],
+            'reason' => ['required_if:paused,true', 'nullable', 'string', 'max:500'],
+            'expires_at' => ['nullable', 'date', 'after:now'],
+            'extend_minutes' => ['nullable', 'integer', 'min:1', 'max:100000'],
+        ]);
+        $ticket->sla_paused = $data['paused'];
+        $ticket->sla_paused_at = $data['paused'] ? now() : null;
+        $ticket->sla_pause_reason = $data['paused'] ? ($data['reason'] ?? null) : null;
+        $ticket->sla_pause_expires_at = $data['paused'] ? ($data['expires_at'] ?? null) : null;
+        if (! empty($data['extend_minutes'])) {
+            $ticket->sla_response_deadline = $ticket->sla_response_deadline?->addMinutes($data['extend_minutes']);
+            $ticket->sla_resolution_deadline = $ticket->sla_resolution_deadline?->addMinutes($data['extend_minutes']);
+        }
+        $ticket->save();
+        $this->audit($request, $data['paused'] ? 'ticket.sla_paused' : 'ticket.sla_resumed', $ticket, $data);
+        return response()->json(['data' => $ticket->fresh()]);
+    }
+
+    public function redactTicket(Request $request, Ticket $ticket)
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'max:500']]);
+        $ticket->update(['description' => '[REDACTED BY ADMIN]', 'description_redacted_at' => now()]);
+        $this->audit($request, 'ticket.description_redacted', $ticket, ['reason' => $data['reason']]);
+        return response()->json(['data' => $ticket->fresh()]);
+    }
+
     public function auditLogs(Request $request)
     {
         $logs = AuditLog::with('actor:id,name,email,role')->latest()->paginate($request->integer('limit', 50));
@@ -131,8 +254,15 @@ class AdminController extends Controller
         $resolvedTickets = Ticket::whereNotNull('resolved_at')->get(['created_at', 'resolved_at']);
         $mttr = $resolvedTickets->isEmpty()
             ? 0
-            : round($resolvedTickets->avg(fn (Ticket $ticket) => $ticket->created_at->diffInMinutes($ticket->resolved_at)), 2);
+            : round($resolvedTickets->avg(fn ($ticket) => $ticket->created_at->diffInMinutes($ticket->resolved_at)), 2);
+        $responseMinutes = Ticket::query()->whereHas('interactions', function ($query) {
+            $query->whereIn('interaction_type', ['PUBLIC_COMMENT', 'INTERNAL_NOTE']);
+        })->with(['interactions' => fn ($query) => $query->whereIn('interaction_type', ['PUBLIC_COMMENT', 'INTERNAL_NOTE'])->oldest()])->get()->map(function ($ticket) {
+            $first = $ticket->interactions->first();
+            return $first ? $ticket->created_at->diffInMinutes($first->created_at) : null;
+        })->filter();
         return response()->json(['data' => [
+            'first_response_time_minutes' => $responseMinutes->isEmpty() ? 0 : round($responseMinutes->avg(), 2),
             'first_response_breach_rate' => $total ? round(Ticket::where('sla_response_status', 'BREACHED')->count() / $total * 100, 2) : 0,
             'resolution_breach_rate' => $total ? round(Ticket::where('sla_resolution_status', 'BREACHED')->count() / $total * 100, 2) : 0,
             'mean_time_to_resolution_minutes' => $mttr,

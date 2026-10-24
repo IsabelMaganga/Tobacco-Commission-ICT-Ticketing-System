@@ -71,7 +71,7 @@ class User extends Authenticatable
 
     public function supportGroups(): BelongsToMany
     {
-        return $this->belongsToMany(SupportGroup::class)->withPivot(['max_ticket_capacity', 'availability'])->withTimestamps();
+        return $this->belongsToMany(SupportGroup::class, 'group_user', 'user_id', 'group_id')->withPivot(['max_ticket_capacity', 'availability'])->withTimestamps();
     }
 
     /** Comments this user made on tickets. */

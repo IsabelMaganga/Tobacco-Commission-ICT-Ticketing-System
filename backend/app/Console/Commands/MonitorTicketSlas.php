@@ -13,7 +13,13 @@ class MonitorTicketSlas extends Command
 
     public function handle(): int
     {
+        Ticket::where('sla_paused', true)
+            ->whereNotNull('sla_pause_expires_at')
+            ->where('sla_pause_expires_at', '<=', now())
+            ->update(['sla_paused' => false, 'sla_paused_at' => null, 'sla_pause_reason' => null, 'sla_pause_expires_at' => null]);
+
         Ticket::whereNotIn('status', ['RESOLVED', 'CLOSED'])
+            ->where('sla_paused', false)
             ->where('sla_response_status', 'ACTIVE')
             ->where('sla_response_deadline', '<', now())
             ->each(function (Ticket $ticket): void {
@@ -28,6 +34,7 @@ class MonitorTicketSlas extends Command
             });
 
         Ticket::whereNotIn('status', ['RESOLVED', 'CLOSED'])
+            ->where('sla_paused', false)
             ->where('sla_resolution_status', 'ACTIVE')
             ->where('sla_resolution_deadline', '<', now())
             ->update(['sla_resolution_status' => 'BREACHED']);

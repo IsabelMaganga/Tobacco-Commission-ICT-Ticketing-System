@@ -16,12 +16,17 @@ class Ticket extends Model
         'impact', 'status', 'requester_id', 'assignee_id', 'assigned_group_id',
         'sla_response_deadline', 'sla_resolution_deadline', 'sla_response_status',
         'sla_resolution_status', 'resolution_notes', 'pending_reason', 'resolved_at',
+        'sla_paused', 'sla_paused_at', 'sla_pause_reason', 'sla_pause_expires_at', 'description_redacted_at',
     ];
 
     protected $casts = [
         'resolved_at' => 'datetime',
         'sla_response_deadline' => 'datetime',
         'sla_resolution_deadline' => 'datetime',
+        'sla_paused' => 'boolean',
+        'sla_paused_at' => 'datetime',
+        'sla_pause_expires_at' => 'datetime',
+        'description_redacted_at' => 'datetime',
     ];
 
     public function requester(): BelongsTo

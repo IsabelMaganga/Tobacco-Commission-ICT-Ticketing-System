@@ -49,3 +49,32 @@ textarea::placeholder {
     padding-bottom: 60px;
   }
 }
+
+[data-admin-section="sla"] [data-admin-panel]:not([data-admin-panel="SLA matrix"]),
+[data-admin-section="business-hours"] [data-admin-panel]:not([data-admin-panel="Business hours"]),
+[data-admin-section="holidays"] [data-admin-panel]:not([data-admin-panel="Holiday calendar"]),
+[data-admin-section="routing"] [data-admin-panel]:not([data-admin-panel="Automated routing"]),
+[data-admin-section="groups"] [data-admin-panel]:not([data-admin-panel="Support groups"]),
+[data-admin-section="roles"] [data-admin-panel]:not([data-admin-panel="Role assignments"]),
+[data-admin-section="onboard"] [data-admin-panel]:not([data-admin-panel="Onboard user"]),
+[data-admin-section="workload"] [data-admin-panel]:not([data-admin-panel="Agent workload"]),
+[data-admin-section="overview"] [data-admin-panel]:not([data-admin-panel="Performance snapshot"]) {
+  display: none;
+}
+
+[data-admin-section="intervention"] [data-admin-panel]:not([data-admin-panel="Global ticket intervention"]),
+[data-admin-section="governance"] [data-admin-panel]:not([data-admin-panel="SLA pause or extend"]):not([data-admin-panel="Redact sensitive description"]),
+[data-admin-section="audit"] [data-admin-panel]:not([data-admin-panel="Global audit trail"]) {
+  display: none;
+}
+
+[data-admin-section="sla"] > div:not(:has(> [data-admin-panel="SLA matrix"])),
+[data-admin-section="business-hours"] > div:not(:has(> [data-admin-panel="Business hours"])),
+[data-admin-section="holidays"] > div:not(:has(> [data-admin-panel="Holiday calendar"])),
+[data-admin-section="routing"] > div:not(:has(> [data-admin-panel="Automated routing"])),
+[data-admin-section="groups"] > div:not(:has(> [data-admin-panel="Support groups"])),
+[data-admin-section="roles"] > div:not(:has(> [data-admin-panel="Role assignments"])),
+[data-admin-section="onboard"] > div:not(:has(> [data-admin-panel="Onboard user"])),
+[data-admin-section="workload"] > div:not(:has(> [data-admin-panel="Agent workload"])) {
+  display: none;
+}

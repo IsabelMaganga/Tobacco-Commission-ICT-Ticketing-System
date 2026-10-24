@@ -8,6 +8,7 @@ use App\Models\TicketInteraction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use App\Services\TicketTriageService;
 
 class TicketController extends Controller
 {
@@ -26,7 +27,7 @@ class TicketController extends Controller
 
         if ($this->isRequester($user)) {
             $query->where('requester_id', $user->id);
-        } elseif ($user->role === 'ict_officer') {
+        } elseif ($this->isSupportAgent($user)) {
             $query->where(fn ($q) => $q->where('assignee_id', $user->id)->orWhereNull('assignee_id'));
         }
 
@@ -36,21 +37,33 @@ class TicketController extends Controller
         return response()->json($query->latest()->paginate($request->integer('limit', 15)));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, TicketTriageService $triage)
     {
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:150'],
             'description' => ['required', 'string'],
-            'category_id' => ['required', 'exists:categories,id'],
-            'urgency' => ['required', Rule::in(['low', 'medium', 'high'])],
-            'impact' => ['required', Rule::in(['low', 'medium', 'high'])],
+            'category_id' => ['nullable', 'exists:categories,id', 'required_without:category'],
+            'category' => ['nullable', 'string', 'max:100', 'required_without:category_id'],
+            'urgency' => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'impact' => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'priority' => ['nullable', Rule::in(['low', 'medium', 'high', 'critical'])],
         ]);
 
-        $priority = $this->priorityFor($validated['impact'], $validated['urgency']);
-        [$responseMinutes, $resolutionMinutes] = $priority === 'critical' ? [15, 120] : ($priority === 'low' ? [480, 2880] : [60, 480]);
-        $groupId = DB::table('categories')->where('id', $validated['category_id'])->value('assigned_group_id');
+        if (empty($validated['category_id'])) {
+            $validated['category_id'] = DB::table('categories')
+                ->whereRaw('LOWER(name) = ?', [strtolower($validated['category'])])
+                ->value('id');
+            abort_unless($validated['category_id'], 422, 'The selected category is not configured.');
+        }
 
-        $ticket = DB::transaction(function () use ($request, $validated, $priority, $responseMinutes, $resolutionMinutes, $groupId) {
+        [$validated['urgency'], $validated['impact']] = $this->triageInputs($validated);
+
+        $priority = $this->priorityFor($validated['impact'], $validated['urgency']);
+        $targets = $triage->targets($priority, now());
+        $groupId = $triage->route((int) $validated['category_id']);
+        $assigneeId = $triage->assignableAgent($groupId);
+
+        $ticket = DB::transaction(function () use ($request, $validated, $priority, $targets, $groupId, $assigneeId) {
             $ticket = Ticket::create([
                 ...$validated,
                 'ticket_number' => Ticket::generateTicketNumber(),
@@ -58,10 +71,11 @@ class TicketController extends Controller
                 'priority' => $priority,
                 'status' => 'NEW',
                 'assigned_group_id' => $groupId,
-                'sla_response_deadline' => now()->addMinutes($responseMinutes),
-                'sla_resolution_deadline' => now()->addMinutes($resolutionMinutes),
+                'assignee_id' => $assigneeId,
+                'sla_response_deadline' => $targets['response'],
+                'sla_resolution_deadline' => $targets['resolution'],
             ]);
-            $this->log($ticket, $request->user()->id, 'Ticket created.');
+            $this->log($ticket, $request->user()->id, 'Ticket created and triaged.', ['event' => 'ticket.created', 'assigned_group_id' => $groupId, 'assignee_id' => $assigneeId]);
             return $ticket;
         });
 
@@ -118,10 +132,14 @@ class TicketController extends Controller
 
     public function assign(Request $request, Ticket $ticket)
     {
-        abort_unless($request->user()->isManager(), 403, 'Only managers can force-reassign tickets.');
+        $user = $request->user();
+        abort_unless($user->isManager() || $user->isIctOfficer(), 403, 'You cannot assign this ticket.');
         $data = $request->validate(['assignee_id' => ['nullable', 'exists:users,id'], 'assigned_group_id' => ['nullable', 'exists:groups,id']]);
+        if ($user->isIctOfficer() && (int) ($data['assignee_id'] ?? 0) !== $user->id) {
+            abort(403, 'Support agents can only assign tickets to themselves.');
+        }
         $ticket->update($data);
-        $this->log($ticket, $request->user()->id, 'Ticket assignment overridden by manager.', ['assignee_id' => $data['assignee_id'] ?? null, 'assigned_group_id' => $data['assigned_group_id'] ?? null]);
+        $this->log($ticket, $user->id, 'Ticket assigned to support agent.', ['assignee_id' => $data['assignee_id'] ?? null, 'assigned_group_id' => $data['assigned_group_id'] ?? null]);
         return response()->json(['data' => $ticket->fresh()->load(['assignee', 'interactions'])]);
     }
 
@@ -153,15 +171,34 @@ class TicketController extends Controller
         return 'low';
     }
 
+    private function triageInputs(array $validated): array
+    {
+        if (! empty($validated['urgency']) && ! empty($validated['impact'])) {
+            return [$validated['urgency'], $validated['impact']];
+        }
+
+        return match ($validated['priority'] ?? 'medium') {
+            'critical' => ['high', 'high'],
+            'high' => ['high', 'medium'],
+            'low' => ['low', 'low'],
+            default => ['medium', 'medium'],
+        };
+    }
+
     private function isRequester($user): bool
     {
         return in_array($user->role, ['staff', 'requester'], true);
     }
 
+    private function isSupportAgent($user): bool
+    {
+        return in_array($user->role, ['ict_officer', 'tier_1', 'tier_2_3'], true);
+    }
+
     private function assertCanAccess($user, Ticket $ticket): void
     {
         abort_if($this->isRequester($user) && $ticket->requester_id !== $user->id, 403, 'You cannot access this ticket.');
-        abort_if($user->role === 'ict_officer' && $ticket->assignee_id !== null && $ticket->assignee_id !== $user->id, 403, 'You cannot access this ticket.');
+        abort_if($this->isSupportAgent($user) && $ticket->assignee_id !== null && $ticket->assignee_id !== $user->id, 403, 'You cannot access this ticket.');
     }
 
     private function log(Ticket $ticket, int $authorId, string $body, ?array $metadata = null): void

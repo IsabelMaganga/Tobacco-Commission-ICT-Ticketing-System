@@ -13,6 +13,6 @@ class SupportGroup extends Model
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class)->withPivot(['max_ticket_capacity', 'availability'])->withTimestamps();
+        return $this->belongsToMany(User::class, 'group_user', 'group_id', 'user_id')->withPivot(['max_ticket_capacity', 'availability'])->withTimestamps();
     }
 }

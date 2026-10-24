@@ -1,129 +1,105 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { BarChart3, CalendarDays, Clock3, FileKey2, GitBranch, ShieldCheck, UsersRound } from 'lucide-react';
+import { FormEvent, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { BarChart3, CalendarDays, Clock3, FileKey2, GitBranch, Plus, ShieldCheck, UsersRound } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import type { Role, User } from '@/lib/types';
 
 const roles: Role[] = ['requester', 'tier_1', 'tier_2_3', 'manager'];
+const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const field = 'w-full min-w-0 rounded-lg border border-[#cad9cf] bg-white px-3 py-2.5 text-sm text-[#16392b] outline-none focus:border-[#0b5d43] focus:ring-2 focus:ring-[#0b5d43]/15';
+
+type Sla = { priority: string; response_time_mins: number; resolution_time_mins: number; business_hours_only: boolean };
+type Hours = { day_of_week: number; opens_at: string | null; closes_at: string | null; is_open: boolean };
+type Holiday = { id: number; holiday_date: string; name: string };
+type Group = { id: number; name: string; description?: string; users_count?: number };
+type Rule = { id: number; name: string; conditions: { field: string; operator: string; value: string }; target_group_id: number; target_group?: Group };
+type Workload = { id: number; name: string; email: string; role: string; active_ticket_count: number; groups: { id: number; name: string; availability: string; max_ticket_capacity: number | null }[] };
+type Audit = { id: number; action: string; metadata: Record<string, unknown> | null; created_at: string; actor?: { name: string } };
 
 export default function AdminPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const section = searchParams.get('section') ?? 'overview';
   const [users, setUsers] = useState<User[]>([]);
-  const [slas, setSlas] = useState<{ priority: string; response_time_mins: number; resolution_time_mins: number; business_hours_only: boolean }[]>([]);
+  const [slas, setSlas] = useState<Sla[]>([]);
+  const [hours, setHours] = useState<Hours[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [workload, setWorkload] = useState<Workload[]>([]);
   const [analytics, setAnalytics] = useState<{ first_response_breach_rate: number; resolution_breach_rate: number; mean_time_to_resolution_minutes: number } | null>(null);
-  const [sla, setSla] = useState({ priority: 'P1', response_time_mins: 15, resolution_time_mins: 120, business_hours_only: false });
-  const [loading, setLoading] = useState(true);
+  const [auditLogs, setAuditLogs] = useState<Audit[]>([]);
   const [message, setMessage] = useState('');
-
-  const loadUsers = async () => {
-    const response = await api.get<{ data: User[] }>('/users');
-    setUsers(response.data.data);
-    setLoading(false);
-  };
+  const [loading, setLoading] = useState(true);
+  const [sla, setSla] = useState<Sla>({ priority: 'P1', response_time_mins: 15, resolution_time_mins: 120, business_hours_only: false });
+  const [hour, setHour] = useState({ day_of_week: 1, opens_at: '09:00', closes_at: '17:00', is_open: true });
+  const [holiday, setHoliday] = useState({ holiday_date: '', name: '' });
+  const [group, setGroup] = useState({ name: '', description: '' });
+  const [rule, setRule] = useState({ name: '', value: '', target_group_id: '' });
+  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'REQUESTER', department: '', group_ids: [] as string[] });
+  const [ticketAction, setTicketAction] = useState({ id: '', status: '', priority: '', assignee_id: '', assigned_group_id: '', reason: '', redact: false, paused: false, extend_minutes: '' });
 
   useEffect(() => {
-    if (user?.role === 'admin' || user?.role === 'manager') {
-      Promise.all([
-        loadUsers(),
-        api.get<{ data: typeof slas }>('/v1/admin/slas').then((response) => setSlas(response.data.data)),
-        api.get<{ data: typeof analytics }>('/v1/admin/analytics').then((response) => setAnalytics(response.data.data)),
-      ]).catch(() => setMessage('Unable to load administration data.'));
-    }
+    if (user?.role !== 'admin') return;
+    Promise.all([
+      api.get<{ data: User[] }>('/users'),
+      api.get<{ data: Sla[] }>('/v1/admin/slas'),
+      api.get<{ data: Hours[] }>('/v1/admin/business-hours'),
+      api.get<{ data: Holiday[] }>('/v1/admin/holidays'),
+      api.get<{ data: Group[] }>('/v1/admin/groups'),
+      api.get<{ data: Rule[] }>('/v1/admin/routing-rules'),
+      api.get<{ data: Workload[] }>('/v1/admin/workload'),
+      api.get<{ data: typeof analytics }>('/v1/admin/analytics'),
+      api.get<{ data: Audit[] }>('/v1/admin/audit-logs'),
+    ]).then(([u, s, h, hol, g, r, w, a, logs]) => {
+      setUsers(u.data.data); setSlas(s.data.data); setHours(h.data.data); setHolidays(hol.data.data); setGroups(g.data.data); setRules(r.data.data); setWorkload(w.data.data); setAnalytics(a.data.data); setAuditLogs(logs.data.data);
+    }).catch(() => setMessage('Some administration data could not be loaded. Check the API and try again.')).finally(() => setLoading(false));
   }, [user]);
 
-  const changeRole = async (target: User, role: Role) => {
-    await api.patch(`/users/${target.id}`, { role });
-    setUsers((current) => current.map((item) => item.id === target.id ? { ...item, role } : item));
-    setMessage(`${target.name}'s role was updated.`);
+  const save = async (event: FormEvent, request: () => Promise<void>, success: string) => { event.preventDefault(); try { await request(); setMessage(success); } catch { setMessage('Could not save this configuration.'); } };
+  const saveSla = (event: FormEvent) => save(event, async () => { const { data } = await api.post<{ data: Sla }>('/v1/admin/slas', sla); setSlas((items) => [...items.filter((item) => item.priority !== sla.priority), data.data].sort((a, b) => a.priority.localeCompare(b.priority))); }, `${sla.priority} SLA policy saved.`);
+  const saveHour = (event: FormEvent) => save(event, async () => { const { data } = await api.post<{ data: Hours }>('/v1/admin/business-hours', hour); setHours((items) => [...items.filter((item) => item.day_of_week !== hour.day_of_week), data.data].sort((a, b) => a.day_of_week - b.day_of_week)); }, `${days[hour.day_of_week]} hours saved.`);
+  const saveHoliday = (event: FormEvent) => save(event, async () => { const { data } = await api.post<{ data: Holiday }>('/v1/admin/holidays', holiday); setHolidays((items) => [...items.filter((item) => item.holiday_date !== data.data.holiday_date), data.data]); setHoliday({ holiday_date: '', name: '' }); }, 'Holiday saved.');
+  const saveGroup = (event: FormEvent) => save(event, async () => { const { data } = await api.post<{ data: Group }>('/v1/admin/groups', group); setGroups((items) => [...items, data.data]); setGroup({ name: '', description: '' }); }, 'Support group created.');
+  const saveRule = (event: FormEvent) => save(event, async () => { const { data } = await api.post<{ data: Rule }>('/v1/admin/routing-rules', { name: rule.name, conditions: { field: 'category_id', operator: 'EQUALS', value: rule.value }, target_group_id: Number(rule.target_group_id) }); setRules((items) => [...items, data.data]); setRule({ name: '', value: '', target_group_id: '' }); }, 'Routing rule created.');
+  const onboard = (event: FormEvent) => save(event, async () => { const { data } = await api.post<{ data: User }>('/v1/admin/users', { ...newUser, group_ids: newUser.group_ids.map(Number) }); setUsers((items) => [...items, data.data]); setNewUser({ name: '', email: '', password: '', role: 'REQUESTER', department: '', group_ids: [] }); }, 'User onboarded successfully.');
+  const intervene = (event: FormEvent) => save(event, async () => { const id = ticketAction.id; const payload = Object.fromEntries(Object.entries({ status: ticketAction.status || undefined, priority: ticketAction.priority || undefined, assignee_id: ticketAction.assignee_id ? Number(ticketAction.assignee_id) : undefined, assigned_group_id: ticketAction.assigned_group_id ? Number(ticketAction.assigned_group_id) : undefined }).filter(([, value]) => value !== undefined)); await api.patch(`/v1/admin/tickets/${id}`, payload); setTicketAction({ ...ticketAction, id: '' }); }, 'Ticket intervention saved.');
+  const pauseSla = (event: FormEvent) => save(event, async () => { await api.patch(`/v1/admin/tickets/${ticketAction.id}/sla`, { paused: ticketAction.paused, reason: ticketAction.reason, extend_minutes: ticketAction.extend_minutes ? Number(ticketAction.extend_minutes) : undefined }); }, ticketAction.paused ? 'SLA paused.' : 'SLA resumed.');
+  const redact = (event: FormEvent) => save(event, async () => { await api.patch(`/v1/admin/tickets/${ticketAction.id}/redact`, { reason: ticketAction.reason }); }, 'Ticket description redacted.');
+
+  const updateAvailability = async (agent: Workload, groupId: number, availability: string, max_ticket_capacity?: number | null) => {
+    try {
+      await api.patch(`/v1/admin/users/${agent.id}/availability`, { group_id: groupId, availability, max_ticket_capacity });
+      setWorkload((items) => items.map((item) => item.id === agent.id ? { ...item, groups: item.groups.map((group) => group.id === groupId ? { ...group, availability, max_ticket_capacity: max_ticket_capacity ?? null } : group) } : item));
+      setMessage(`${agent.name}'s availability was updated.`);
+    } catch { setMessage('Availability update failed.'); }
   };
 
-  const removeUser = async (target: User) => {
-    if (!window.confirm(`Delete ${target.name}'s account?`)) return;
-    await api.delete(`/users/${target.id}`);
-    setUsers((current) => current.filter((item) => item.id !== target.id));
-  };
+  const changeRole = async (target: User, role: Role) => { try { await api.patch(`/users/${target.id}`, { role }); setUsers((items) => items.map((item) => item.id === target.id ? { ...item, role } : item)); setMessage(`${target.name}'s role was updated.`); } catch { setMessage('Role update failed.'); } };
 
-  const saveSla = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const response = await api.post<{ data: typeof sla }>('/v1/admin/slas', sla);
-    setSlas((current) => [...current.filter((item) => item.priority !== sla.priority), response.data.data]);
-    setMessage(`${sla.priority} SLA policy saved.`);
-  };
+  if (user && user.role !== 'admin') return <section className="rounded-xl bg-white p-10 text-center"><ShieldCheck className="mx-auto text-[#a47b18]" size={32} /><h1 className="mt-3 text-xl font-semibold text-[#16392b]">Administrator access required</h1></section>;
 
-  if (user && user.role !== 'admin' && user.role !== 'manager') {
-    return <section className="py-16 text-center"><h1 className="text-xl font-semibold">Access denied</h1></section>;
-  }
-
-  return (
-    <section className="space-y-8">
-      <div className="rounded-2xl bg-[#0b5d43] px-6 py-7 text-white shadow-xl shadow-[#0b5d43]/10 sm:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-5">
-          <div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#d9b85a]">Administrator workspace</p><h1 className="mt-2 text-3xl font-bold tracking-tight">System command centre</h1><p className="mt-2 max-w-xl text-sm text-white/70">Configure the service engine, govern access, and keep support performance visible.</p></div>
-          <ShieldMark />
-        </div>
-      </div>
-      {message && <p className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[
-        [Clock3, 'SLA policies', 'Response targets'], [CalendarDays, 'Business calendar', 'Hours and holidays'], [GitBranch, 'Routing rules', 'Automated assignment'], [UsersRound, 'Access control', 'People and teams'],
-      ].map(([Icon, title, copy]) => <div key={title as string} className="flex items-center gap-3 rounded-xl border border-[#dfe8df] bg-white px-4 py-4 shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#fbf5df] text-[#a47b18]"><Icon size={19} /></span><span><strong className="block text-sm text-[#16392b]">{title as string}</strong><small className="text-xs text-gray-500">{copy as string}</small></span></div>)}</div>
-      {analytics && <div><SectionLabel icon={<BarChartIcon />} label="Performance snapshot" /><div className="grid gap-4 sm:grid-cols-3">
-        {[
-          ['Response breach', `${analytics.first_response_breach_rate}%`],
-          ['Resolution breach', `${analytics.resolution_breach_rate}%`],
-          ['Mean resolution', `${analytics.mean_time_to_resolution_minutes} min`],
-        ].map(([label, value]) => <div key={label} className="rounded-xl border border-[#dfe8df] bg-white p-5 shadow-sm"><p className="text-sm text-gray-500">{label}</p><p className="mt-2 text-2xl font-bold text-[#0b5d43]">{value}</p></div>)}</div></div>}
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.5fr]">
-        <form onSubmit={saveSla} className="space-y-4 rounded-xl border border-[#dfe8df] bg-white p-6 shadow-sm">
-          <div><h2 className="text-lg font-semibold text-gray-950">SLA matrix</h2><p className="text-sm text-gray-500">Set response and resolution targets.</p></div>
-          <select value={sla.priority} onChange={(event) => setSla({ ...sla, priority: event.target.value })} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-[#16392b]">
-            {['P1', 'P2', 'P3', 'P4'].map((priority) => <option key={priority} className="bg-white text-[#16392b]">{priority}</option>)}
-          </select>
-          <input type="number" min="1" value={sla.response_time_mins} onChange={(event) => setSla({ ...sla, response_time_mins: Number(event.target.value) })} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-[#16392b]" aria-label="Response time in minutes" />
-          <input type="number" min="1" value={sla.resolution_time_mins} onChange={(event) => setSla({ ...sla, resolution_time_mins: Number(event.target.value) })} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-[#16392b]" aria-label="Resolution time in minutes" />
-          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sla.business_hours_only} onChange={(event) => setSla({ ...sla, business_hours_only: event.target.checked })} /> Business hours only</label>
-          <button className="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Save SLA policy</button>
-        </form>
-        <div className="rounded-xl border border-[#dfe8df] bg-white p-6 shadow-sm"><SectionLabel icon={<FileKey2 />} label="Configured policies" /><div className="mt-4 divide-y divide-gray-200">{slas.map((policy) => <div key={policy.priority} className="flex items-center justify-between py-3 text-sm"><span className="font-semibold text-[#0b5d43]">{policy.priority}</span><span className="text-gray-600">{policy.response_time_mins}m response · {policy.resolution_time_mins}m resolution</span></div>)}</div></div>
-      </div>
-      <div><SectionLabel icon={<UsersRound />} label="People and role assignments" /><div className="overflow-hidden rounded-xl border border-[#dfe8df] bg-white shadow-sm">
-        {loading ? <p className="p-6 text-gray-500">Loading users...</p> : (
-          <div className="divide-y divide-gray-200">
-            {users.map((target) => (
-              <div key={target.id} className="flex flex-wrap items-center justify-between gap-4 p-5">
-                <div>
-                  <p className="font-semibold text-gray-950">{target.name}</p>
-                  <p className="text-sm text-gray-500">{target.email}{target.department ? ` · ${target.department}` : ''}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={roles.includes(target.role) ? target.role : 'requester'}
-                    onChange={(event) => changeRole(target, event.target.value as Role)}
-                    className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-[#16392b]"
-                    aria-label={`Role for ${target.name}`}
-                  >
-                    {roles.map((role) => <option key={role} value={role}>{role.replace('_', ' ')}</option>)}
-                  </select>
-                  <button onClick={() => removeUser(target)} disabled={target.id === user?.id} className="rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">Delete</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div></div>
-    </section>
-  );
+  return <section className="space-y-8" data-admin-section={section}>
+    <header className="rounded-2xl bg-[#0b5d43] px-5 py-7 text-white shadow-xl shadow-[#0b5d43]/10 sm:px-8"><p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d9b85a]">System configuration</p><div className="mt-2 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-3xl font-bold tracking-tight">Administration</h1><p className="mt-2 max-w-2xl text-sm text-white/70">Configure the service engine, business calendar, automated routing, and support teams.</p></div><ShieldCheck className="text-[#d9b85a]" size={40} /></div></header>
+    {message && <div role="status" className="rounded-lg border border-[#b9dcc5] bg-[#eaf7ee] px-4 py-3 text-sm text-[#14532d]">{message}</div>}
+    {loading ? <div className="rounded-xl border border-[#dfe8df] bg-white p-8 text-center text-sm text-gray-500">Loading configuration...</div> : <>
+      {section === 'overview' && analytics && <Panel title="Performance snapshot" icon={<BarChart3 size={17} />}><div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{[['Response breach', `${analytics.first_response_breach_rate}%`], ['Resolution breach', `${analytics.resolution_breach_rate}%`], ['Mean resolution', `${analytics.mean_time_to_resolution_minutes} min`]].map(([label, value]) => <div key={label} className="rounded-lg bg-[#f1fff8] p-4"><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-2xl font-bold text-[#0b5d43]">{value}</p></div>)}</div></Panel>}
+      {section === 'sla' && <Panel title="SLA matrix" icon={<Clock3 size={17} />}><form onSubmit={saveSla} className="grid gap-3 sm:grid-cols-2"><select className={field} value={sla.priority} onChange={(e) => setSla({ ...sla, priority: e.target.value })}>{['P1', 'P2', 'P3', 'P4'].map((p) => <option key={p}>{p}</option>)}</select><label className="flex items-center gap-2 rounded-lg border border-[#cad9cf] px-3 text-sm text-[#16392b]"><input type="checkbox" checked={sla.business_hours_only} onChange={(e) => setSla({ ...sla, business_hours_only: e.target.checked })} /> Business hours only</label><input className={field} type="number" min="1" value={sla.response_time_mins} onChange={(e) => setSla({ ...sla, response_time_mins: Number(e.target.value) })} aria-label="Response time minutes" placeholder="Response minutes" /><input className={field} type="number" min="1" value={sla.resolution_time_mins} onChange={(e) => setSla({ ...sla, resolution_time_mins: Number(e.target.value) })} aria-label="Resolution time minutes" placeholder="Resolution minutes" /><button className="sm:col-span-2 rounded-lg bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#084936]">Save SLA policy</button></form><div className="mt-5 divide-y divide-[#e4ece6]">{slas.map((item) => <div key={item.priority} className="flex flex-wrap justify-between gap-2 py-2 text-sm"><strong className="text-[#0b5d43]">{item.priority}</strong><span className="text-gray-600">{item.response_time_mins}m response · {item.resolution_time_mins}m resolution</span></div>)}</div></Panel>}
+      {section === 'business-hours' && <Panel title="Business hours" icon={<CalendarDays size={17} />}><form onSubmit={saveHour} className="grid gap-3 sm:grid-cols-2"><select className={field} value={hour.day_of_week} onChange={(e) => setHour({ ...hour, day_of_week: Number(e.target.value) })}>{days.map((day, index) => <option key={day} value={index}>{day}</option>)}</select><label className="flex items-center gap-2 rounded-lg border border-[#cad9cf] px-3 text-sm text-[#16392b]"><input type="checkbox" checked={hour.is_open} onChange={(e) => setHour({ ...hour, is_open: e.target.checked })} /> Open day</label><input className={field} type="time" value={hour.opens_at} onChange={(e) => setHour({ ...hour, opens_at: e.target.value })} /><input className={field} type="time" value={hour.closes_at} onChange={(e) => setHour({ ...hour, closes_at: e.target.value })} /><button className="sm:col-span-2 rounded-lg bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white">Save business hours</button></form><div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">{hours.map((item) => <div key={item.day_of_week} className="rounded-lg bg-[#f1fff8] p-2 text-xs"><strong className="block text-[#16392b]">{days[item.day_of_week].slice(0, 3)}</strong><span className="text-gray-500">{item.is_open ? `${item.opens_at} - ${item.closes_at}` : 'Closed'}</span></div>)}</div></Panel>}
+      <div className="grid min-w-0 gap-6 xl:grid-cols-2"><Panel title="Holiday calendar" icon={<CalendarDays size={17} />}><form onSubmit={saveHoliday} className="grid gap-3 sm:grid-cols-[1fr_1.4fr_auto]"><input className={field} type="date" value={holiday.holiday_date} onChange={(e) => setHoliday({ ...holiday, holiday_date: e.target.value })} required /><input className={field} value={holiday.name} onChange={(e) => setHoliday({ ...holiday, name: e.target.value })} placeholder="Holiday name" required /><button className="inline-flex items-center justify-center gap-1 rounded-lg bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white"><Plus size={16} /> Add</button></form><div className="mt-4 space-y-2">{holidays.map((item) => <div key={item.id} className="flex flex-wrap justify-between gap-2 rounded-lg bg-[#f1fff8] px-3 py-2 text-sm"><span className="font-medium text-[#16392b]">{item.name}</span><span className="text-gray-500">{item.holiday_date}</span></div>)}</div></Panel>
+      <Panel title="Automated routing" icon={<GitBranch size={17} />}><form onSubmit={saveRule} className="grid gap-3"><input className={field} value={rule.name} onChange={(e) => setRule({ ...rule, name: e.target.value })} placeholder="Rule name" required /><div className="grid gap-3 sm:grid-cols-2"><input className={field} value={rule.value} onChange={(e) => setRule({ ...rule, value: e.target.value })} placeholder="Category ID" required /><select className={field} value={rule.target_group_id} onChange={(e) => setRule({ ...rule, target_group_id: e.target.value })} required><option value="">Assign to group...</option>{groups.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><button className="rounded-lg bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white">Create routing rule</button></form><div className="mt-4 space-y-2">{rules.map((item) => <div key={item.id} className="rounded-lg bg-[#f1fff8] p-3 text-sm"><strong className="text-[#16392b]">{item.name}</strong><span className="block text-gray-500">category_id equals {item.conditions.value} → {item.target_group?.name ?? 'Group'}</span></div>)}</div></Panel></div>
+      <div className="grid min-w-0 gap-6 xl:grid-cols-2"><Panel title="Support groups" icon={<UsersRound size={17} />}><form onSubmit={saveGroup} className="grid gap-3 sm:grid-cols-[1fr_1.4fr_auto]"><input className={field} value={group.name} onChange={(e) => setGroup({ ...group, name: e.target.value })} placeholder="Group name" required /><input className={field} value={group.description} onChange={(e) => setGroup({ ...group, description: e.target.value })} placeholder="Description" /><button className="rounded-lg bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white">Create group</button></form><div className="mt-4 grid gap-2 sm:grid-cols-2">{groups.map((item) => <div key={item.id} className="rounded-lg border border-[#e4ece6] p-3"><strong className="text-sm text-[#16392b]">{item.name}</strong><span className="block text-xs text-gray-500">{item.users_count ?? 0} members</span></div>)}</div></Panel>
+      <Panel title="Role assignments" icon={<ShieldCheck size={17} />}><div className="divide-y divide-[#e4ece6]">{users.map((target) => <div key={target.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><strong className="block truncate text-sm text-[#16392b]">{target.name}</strong><span className="block truncate text-xs text-gray-500">{target.email}</span></div><select className="max-w-full rounded-lg border border-[#cad9cf] bg-white px-2 py-2 text-sm text-[#16392b]" value={roles.includes(target.role) ? target.role : 'requester'} onChange={(e) => changeRole(target, e.target.value as Role)}>{roles.map((role) => <option key={role}>{role}</option>)}</select></div>)}</div></Panel></div>
+      <div className="grid min-w-0 gap-6 xl:grid-cols-2"><Panel title="Onboard user" icon={<Plus size={17} />}><form onSubmit={onboard} className="grid gap-3 sm:grid-cols-2"><input className={field} value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} placeholder="Full name" required /><input className={field} type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} placeholder="Email address" required /><input className={field} type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} placeholder="Temporary password" minLength={8} required /><input className={field} value={newUser.department} onChange={(e) => setNewUser({ ...newUser, department: e.target.value })} placeholder="Department" /><select className={field} value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>{['REQUESTER', 'TIER_1', 'TIER_2_3', 'MANAGER'].map((role) => <option key={role}>{role}</option>)}</select><select className={field} value={newUser.group_ids[0] ?? ''} onChange={(e) => setNewUser({ ...newUser, group_ids: e.target.value ? [e.target.value] : [] })}><option value="">No support group</option>{groups.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="sm:col-span-2 rounded-lg bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white">Create user account</button></form></Panel>
+      <Panel title="Agent workload" icon={<UsersRound size={17} />}><div className="space-y-3">{workload.length === 0 && <p className="text-sm text-gray-500">No support agents have been assigned yet.</p>}{workload.map((agent) => agent.groups.map((group) => <div key={`${agent.id}-${group.id}`} className="rounded-lg border border-[#e4ece6] p-3"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><strong className="block truncate text-sm text-[#16392b]">{agent.name}</strong><span className="block truncate text-xs text-gray-500">{group.name} · {agent.active_ticket_count} active tickets{group.max_ticket_capacity ? ` / ${group.max_ticket_capacity}` : ''}</span></div><select className="rounded-lg border border-[#cad9cf] bg-white px-2 py-2 text-xs text-[#16392b]" value={group.availability} onChange={(e) => updateAvailability(agent, group.id, e.target.value)}><option value="AVAILABLE">Available</option><option value="OUT_OF_OFFICE">Out of office</option></select></div></div>))}</div></Panel></div>
+      {section === 'intervention' && <Panel title="Global ticket intervention" icon={<ShieldCheck size={17} />}><form onSubmit={intervene} className="grid gap-3 sm:grid-cols-2"><input className={field} value={ticketAction.id} onChange={(e) => setTicketAction({ ...ticketAction, id: e.target.value })} placeholder="Ticket ID" required /><select className={field} value={ticketAction.status} onChange={(e) => setTicketAction({ ...ticketAction, status: e.target.value })}><option value="">Keep status</option>{['NEW', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED'].map((value) => <option key={value}>{value}</option>)}</select><select className={field} value={ticketAction.priority} onChange={(e) => setTicketAction({ ...ticketAction, priority: e.target.value })}><option value="">Keep priority</option>{['low', 'medium', 'high', 'critical'].map((value) => <option key={value}>{value}</option>)}</select><select className={field} value={ticketAction.assigned_group_id} onChange={(e) => setTicketAction({ ...ticketAction, assigned_group_id: e.target.value })}><option value="">Keep group</option>{groups.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="sm:col-span-2 rounded-lg bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white">Save intervention</button></form></Panel>}
+      {section === 'governance' && <div className="grid min-w-0 gap-6 xl:grid-cols-2"><Panel title="SLA pause or extend" icon={<Clock3 size={17} />}><form onSubmit={pauseSla} className="grid gap-3"><input className={field} value={ticketAction.id} onChange={(e) => setTicketAction({ ...ticketAction, id: e.target.value })} placeholder="Ticket ID" required /><label className="flex items-center gap-2 text-sm text-[#16392b]"><input type="checkbox" checked={ticketAction.paused} onChange={(e) => setTicketAction({ ...ticketAction, paused: e.target.checked })} /> Pause active SLA</label><input className={field} value={ticketAction.reason} onChange={(e) => setTicketAction({ ...ticketAction, reason: e.target.value })} placeholder="Reason" required={ticketAction.paused} /><input className={field} type="number" min="1" value={ticketAction.extend_minutes} onChange={(e) => setTicketAction({ ...ticketAction, extend_minutes: e.target.value })} placeholder="Optional extension in minutes" /><button className="rounded-lg bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white">Apply SLA change</button></form></Panel><Panel title="Redact sensitive description" icon={<ShieldCheck size={17} />}><form onSubmit={redact} className="grid gap-3"><input className={field} value={ticketAction.id} onChange={(e) => setTicketAction({ ...ticketAction, id: e.target.value })} placeholder="Ticket ID" required /><textarea className={field} value={ticketAction.reason} onChange={(e) => setTicketAction({ ...ticketAction, reason: e.target.value })} placeholder="Redaction reason" required /><button className="rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white">Redact description</button></form></Panel></div>}
+      {section === 'audit' && <Panel title="Global audit trail" icon={<FileKey2 size={17} />}><div className="max-h-[32rem] overflow-auto divide-y divide-[#e4ece6]">{auditLogs.map((log) => <div key={log.id} className="flex flex-wrap justify-between gap-2 py-3 text-sm"><div><strong className="text-[#16392b]">{log.action}</strong><span className="ml-2 text-gray-500">by {log.actor?.name ?? 'System'}</span></div><time className="text-xs text-gray-500">{new Date(log.created_at).toLocaleString()}</time></div>)}</div></Panel>}
+    </>}
+  </section>;
 }
 
-function SectionLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#0b5d43]"><span className="text-[#a47b18]">{icon}</span>{label}</div>;
-}
-
-function ShieldMark() {
-  return <div className="hidden h-16 w-16 items-center justify-center rounded-2xl border border-[#d9b85a]/40 bg-[#d9b85a]/10 text-[#d9b85a] sm:flex"><ShieldCheck size={31} /></div>;
-}
-
-function BarChartIcon() {
-  return <BarChart3 size={17} />;
-}
+function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) { return <section data-admin-panel={title} className="min-w-0 rounded-xl border border-[#dfe8df] bg-white p-4 shadow-sm sm:p-6"><div className="mb-5 flex items-center gap-2 border-b border-[#e4ece6] pb-3 text-sm font-bold uppercase tracking-[0.12em] text-[#0b5d43]"><span className="text-[#a47b18]">{icon}</span>{title}</div>{children}</section>; }

@@ -26,7 +26,7 @@ class UserController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'role' => ['sometimes', Rule::in(['requester', 'tier_1', 'tier_2_3', 'manager'])],
+            'role' => ['sometimes', Rule::in(['requester', 'tier_1', 'tier_2_3', 'manager', 'admin'])],
             'department' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:255'],
             'password' => ['sometimes', 'string', 'min:8'],

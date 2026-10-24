@@ -11,7 +11,7 @@ export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const isOfficer = user?.role === 'ict_officer' || user?.role === 'admin';
+  const isOfficer = ['ict_officer', 'tier_1', 'tier_2_3', 'admin'].includes(user?.role ?? '');
   const isAdmin = user?.role === 'admin';
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -26,7 +26,21 @@ export default function TicketDetailPage() {
   const load = useCallback(async () => {
     try {
       const { data } = await api.get(`/tickets/${id}`);
-      setTicket(data.data ?? data);
+      const ticketData = data.data ?? data;
+      if (!ticketData.comments && ticketData.interactions) {
+        ticketData.comments = ticketData.interactions
+          .filter((interaction: { interaction_type: string }) => interaction.interaction_type !== 'SYSTEM_LOG')
+          .map((interaction: { id: number; ticket_id: number; author_id: number; body: string; interaction_type: string; created_at: string; author?: UserLite }) => ({
+            id: interaction.id,
+            ticket_id: interaction.ticket_id,
+            user_id: interaction.author_id,
+            body: interaction.body,
+            is_internal: interaction.interaction_type === 'INTERNAL_NOTE',
+            created_at: interaction.created_at,
+            user: interaction.author,
+          }));
+      }
+      setTicket(ticketData);
     } catch {
       setError('This ticket could not be loaded. It may not exist, or you may not have access to it.');
     }
@@ -39,7 +53,7 @@ export default function TicketDetailPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    api.get('/users', { params: { role: 'ict_officer' } })
+    api.get('/users')
       .then(({ data }) => setOfficers(data.data ?? data))
       .catch(() => setOfficers([]));
   }, [isAdmin]);
@@ -56,14 +70,14 @@ export default function TicketDetailPage() {
     e.preventDefault();
     if (!body.trim()) return;
     run(async () => {
-      await api.post(`/tickets/${id}/comments`, { body, is_internal: isOfficer && internal });
+      await api.post(`/tickets/${id}/interactions`, { interaction_type: isOfficer && internal ? 'INTERNAL_NOTE' : 'PUBLIC_COMMENT', body });
       setBody('');
       setInternal(false);
     });
   };
   const assign = (assigneeId: number) => run(() => api.patch(`/tickets/${id}/assign`, { assignee_id: assigneeId }));
   const setStatus = (status: TicketStatus) =>
-    run(() => (status === 'resolved' ? api.patch(`/tickets/${id}/resolve`) : api.patch(`/tickets/${id}`, { status })));
+    run(() => api.patch(`/tickets/${id}/status`, { target_status: status, reason_notes: status === 'RESOLVED' ? 'Resolved by support agent.' : status === 'PENDING' ? 'Awaiting additional information.' : undefined }));
   const removeComment = (cid: number) => run(() => api.delete(`/tickets/${id}/comments/${cid}`));
   const deleteTicket = async () => {
     if (!window.confirm('Delete this ticket permanently?')) return;
@@ -82,7 +96,7 @@ export default function TicketDetailPage() {
   if (error) return <div className="mx-auto max-w-3xl px-4 py-8"><p role="alert" className="rounded-md bg-red-50 p-3 text-red-700">{error}</p><Link href="/tickets" className="mt-3 inline-block text-sm underline">Back to tickets</Link></div>;
   if (!ticket) return <p className="px-4 py-8 text-sm text-gray-500">Loading ticket…</p>;
 
-  const comments = [...(ticket.comments ?? [])].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  const comments = [...(ticket.comments ?? (ticket as Ticket & { interactions?: typeof ticket.comments }).interactions ?? [])].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
   const canDelete = (c: { user_id: number }) => isAdmin || (isOfficer && c.user_id === user?.id);
 
   const meta = (k: string, v: React.ReactNode) => (
@@ -116,7 +130,7 @@ export default function TicketDetailPage() {
       <section className="rounded-lg border border-gray-200 bg-white p-5">
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{ticket.description}</p>
         <dl className="mt-5 grid grid-cols-2 gap-4 border-t pt-4 sm:grid-cols-3">
-          {meta('Category', label(ticket.category))}
+          {meta('Category', label(ticket.category ?? (ticket as Ticket & { category_id?: number }).category_id?.toString()))}
           {meta('Department', ticket.department ?? '—')}
           {meta('Reporter', ticket.reporter?.name ?? '—')}
           {meta('Assigned to', ticket.assignee?.name ?? 'Unassigned')}
@@ -173,7 +187,7 @@ export default function TicketDetailPage() {
           ))}
         </ul>
 
-        {ticket.status !== 'closed' && (
+        {ticket.status !== 'CLOSED' && ticket.status !== 'closed' && (
           <form onSubmit={addComment} className="mt-5 space-y-3">
             <label htmlFor="comment" className="sr-only">Add a comment</label>
             <textarea id="comment" rows={3} value={body} onChange={(e) => setBody(e.target.value)} placeholder={internal ? 'Write an internal note (staff cannot see this)' : 'Write a reply'} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-700 focus:outline-none focus:ring-1 focus:ring-green-700" />

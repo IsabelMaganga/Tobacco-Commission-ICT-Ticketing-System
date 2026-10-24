@@ -1,14 +1,14 @@
 export type Role = 'staff' | 'ict_officer' | 'admin';
-export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type TicketStatus = 'NEW' | 'IN_PROGRESS' | 'PENDING' | 'RESOLVED' | 'CLOSED' | 'open' | 'in_progress' | 'resolved' | 'closed';
 export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
 export type TicketCategory = 'hardware' | 'software' | 'network' | 'email' | 'access' | 'other';
 
-export const STATUSES: TicketStatus[] = ['open', 'in_progress', 'resolved', 'closed'];
+export const STATUSES: TicketStatus[] = ['NEW', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'CLOSED'];
 export const PRIORITIES: TicketPriority[] = ['low', 'medium', 'high', 'critical'];
 export const CATEGORIES: TicketCategory[] = ['hardware', 'software', 'network', 'email', 'access', 'other'];
 
-export function label(value: string): string {
-  return value
+export function label(value?: string | null): string {
+  return (value ?? 'Not available')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
