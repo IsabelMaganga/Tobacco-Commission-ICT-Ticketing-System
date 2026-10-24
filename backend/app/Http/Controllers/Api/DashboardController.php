@@ -11,47 +11,32 @@ class DashboardController extends Controller
     public function stats(Request $request)
     {
         $user = $request->user();
-
         $query = Ticket::query();
 
-        if ($user->role === 'staff') {
-            $query->where('reporter_id', $user->id);
+        if (in_array($user->role, ['staff', 'requester'], true)) {
+            $query->where('requester_id', $user->id);
         }
 
-        if ($user->role === 'ict_officer') {
-            $query->where(function ($q) use ($user) {
-                $q->where('assignee_id', $user->id)
-                  ->orWhereNull('assignee_id');
-            });
+        if (in_array($user->role, ['ict_officer', 'tier_1', 'tier_2_3'], true)) {
+            $query->where(fn ($builder) => $builder->where('assignee_id', $user->id)->orWhereNull('assignee_id'));
         }
 
-        $tickets = $query->get();
-
-        $byPriority = [
-            'low' => $tickets->where('priority', 'low')->count(),
-            'medium' => $tickets->where('priority', 'medium')->count(),
-            'high' => $tickets->where('priority', 'high')->count(),
-            'critical' => $tickets->where('priority', 'critical')->count(),
-        ];
-
-        $byCategory = [
-            'hardware' => $tickets->where('category', 'hardware')->count(),
-            'software' => $tickets->where('category', 'software')->count(),
-            'network' => $tickets->where('category', 'network')->count(),
-            'email' => $tickets->where('category', 'email')->count(),
-            'access' => $tickets->where('category', 'access')->count(),
-            'other' => $tickets->where('category', 'other')->count(),
-        ];
+        $tickets = $query->get(['status', 'priority']);
 
         return response()->json([
             'total' => $tickets->count(),
-            'open' => $tickets->where('status', 'open')->count(),
-            'in_progress' => $tickets->where('status', 'in_progress')->count(),
-            'resolved' => $tickets->where('status', 'resolved')->count(),
-            'closed' => $tickets->where('status', 'closed')->count(),
+            'new' => $tickets->where('status', 'NEW')->count(),
+            'in_progress' => $tickets->where('status', 'IN_PROGRESS')->count(),
+            'pending' => $tickets->where('status', 'PENDING')->count(),
+            'resolved' => $tickets->where('status', 'RESOLVED')->count(),
+            'closed' => $tickets->where('status', 'CLOSED')->count(),
             'critical' => $tickets->where('priority', 'critical')->count(),
-            'by_priority' => $byPriority,
-            'by_category' => $byCategory,
+            'by_priority' => [
+                'low' => $tickets->where('priority', 'low')->count(),
+                'medium' => $tickets->where('priority', 'medium')->count(),
+                'high' => $tickets->where('priority', 'high')->count(),
+                'critical' => $tickets->where('priority', 'critical')->count(),
+            ],
         ]);
     }
 }

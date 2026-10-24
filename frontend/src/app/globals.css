@@ -23,6 +23,19 @@ body {
   overflow-x: hidden;
 }
 
+input,
+select,
+textarea {
+  color: #16392b;
+  background-color: #ffffff;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+
 ::selection { background: #d9b85a; color: #0b5d43; }
 
 @media (max-width: 767.98px) {

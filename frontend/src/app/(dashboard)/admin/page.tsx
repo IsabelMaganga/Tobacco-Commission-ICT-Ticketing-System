@@ -77,11 +77,11 @@ export default function AdminPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_1.5fr]">
         <form onSubmit={saveSla} className="space-y-4 rounded-xl border border-[#dfe8df] bg-white p-6 shadow-sm">
           <div><h2 className="text-lg font-semibold text-gray-950">SLA matrix</h2><p className="text-sm text-gray-500">Set response and resolution targets.</p></div>
-          <select value={sla.priority} onChange={(event) => setSla({ ...sla, priority: event.target.value })} className="w-full rounded-md border border-gray-300 px-3 py-2">
-            {['P1', 'P2', 'P3', 'P4'].map((priority) => <option key={priority}>{priority}</option>)}
+          <select value={sla.priority} onChange={(event) => setSla({ ...sla, priority: event.target.value })} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-[#16392b]">
+            {['P1', 'P2', 'P3', 'P4'].map((priority) => <option key={priority} className="bg-white text-[#16392b]">{priority}</option>)}
           </select>
-          <input type="number" min="1" value={sla.response_time_mins} onChange={(event) => setSla({ ...sla, response_time_mins: Number(event.target.value) })} className="w-full rounded-md border border-gray-300 px-3 py-2" aria-label="Response time in minutes" />
-          <input type="number" min="1" value={sla.resolution_time_mins} onChange={(event) => setSla({ ...sla, resolution_time_mins: Number(event.target.value) })} className="w-full rounded-md border border-gray-300 px-3 py-2" aria-label="Resolution time in minutes" />
+          <input type="number" min="1" value={sla.response_time_mins} onChange={(event) => setSla({ ...sla, response_time_mins: Number(event.target.value) })} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-[#16392b]" aria-label="Response time in minutes" />
+          <input type="number" min="1" value={sla.resolution_time_mins} onChange={(event) => setSla({ ...sla, resolution_time_mins: Number(event.target.value) })} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-[#16392b]" aria-label="Resolution time in minutes" />
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={sla.business_hours_only} onChange={(event) => setSla({ ...sla, business_hours_only: event.target.checked })} /> Business hours only</label>
           <button className="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Save SLA policy</button>
         </form>
@@ -100,7 +100,7 @@ export default function AdminPage() {
                   <select
                     value={roles.includes(target.role) ? target.role : 'requester'}
                     onChange={(event) => changeRole(target, event.target.value as Role)}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-[#16392b]"
                     aria-label={`Role for ${target.name}`}
                   >
                     {roles.map((role) => <option key={role} value={role}>{role.replace('_', ' ')}</option>)}

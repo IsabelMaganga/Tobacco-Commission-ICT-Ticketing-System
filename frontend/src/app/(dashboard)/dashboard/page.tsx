@@ -1,177 +1,54 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getStoredToken } from '@/lib/auth';
+import { Activity, AlertTriangle, ArrowRight, CheckCircle2, Clock3, Plus, Ticket as TicketIcon } from 'lucide-react';
+import api from '@/lib/api';
 
-export default function HomePage() {
-  const router = useRouter();
-  const [checking, setChecking] = useState(true);
-  const [currentYear, setCurrentYear] = useState<number | null>(null);
+type DashboardStats = {
+  total: number;
+  new: number;
+  in_progress: number;
+  pending: number;
+  resolved: number;
+  closed: number;
+  critical: number;
+  by_priority: Record<string, number>;
+};
+
+const emptyStats: DashboardStats = { total: 0, new: 0, in_progress: 0, pending: 0, resolved: 0, closed: 0, critical: 0, by_priority: {} };
+
+export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    setCurrentYear(new Date().getFullYear());
-    if (getStoredToken()) {
-      router.replace('/dashboard');
-    } else {
-      setChecking(false);
-    }
-  }, [router]);
+    let active = true;
+    api.get<DashboardStats>('/dashboard/stats')
+      .then(({ data }) => { if (active) setStats(data); })
+      .catch(() => { if (active) setError('Overview data could not be loaded. Check that the backend is running, then try again.'); });
+    return () => { active = false; };
+  }, []);
 
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Loading…</p>
-      </div>
-    );
+  if (error) {
+    return <section className="mx-auto max-w-5xl rounded-xl border border-red-200 bg-red-50 p-8 text-center"><AlertTriangle className="mx-auto text-red-600" size={28} /><h1 className="mt-3 text-xl font-semibold text-red-900">Overview unavailable</h1><p className="mt-2 text-sm text-red-700">{error}</p><button onClick={() => window.location.reload()} className="mt-5 rounded-md bg-[#0b5d43] px-4 py-2 text-sm font-semibold text-white">Retry</button></section>;
   }
 
-  const features = [
-    {
-      title: 'Report Faults',
-      description:
-        'Log ICT faults from anywhere in the Commission — hardware, software, network, email, or access issues.',
-      icon: '📝',
-    },
-    {
-      title: 'Track Progress',
-      description:
-        'Follow every ticket from open to resolved. Live status, priority, and assignment updates.',
-      icon: '📊',
-    },
-    {
-      title: 'Fast Resolution',
-      description:
-        'ICT officers pick up tickets instantly with full context — reducing downtime across departments.',
-      icon: '⚡',
-    },
-    {
-      title: 'Audit Trail',
-      description:
-        'Every comment, assignment, and status change is logged for compliance and accountability.',
-      icon: '🔒',
-    },
+  const data = stats ?? emptyStats;
+  const cards = [
+    { label: 'All tickets', value: data.total, icon: TicketIcon, tone: 'text-[#0b5d43] bg-[#e4f3eb]' },
+    { label: 'New', value: data.new, icon: Activity, tone: 'text-blue-700 bg-blue-50' },
+    { label: 'In progress', value: data.in_progress, icon: Clock3, tone: 'text-amber-700 bg-amber-50' },
+    { label: 'Resolved', value: data.resolved, icon: CheckCircle2, tone: 'text-emerald-700 bg-emerald-50' },
   ];
 
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Nav */}
-      <header className="border-b border-gray-200 bg-white/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-bold text-emerald-700">TIMS</span>
-            <span className="text-xs text-gray-500 hidden sm:inline">
-              Tobacco ICT Support
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/register"
-              className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md"
-            >
-              Register
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* Hero */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
-        <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium px-3 py-1 mb-6">
-          Official ICT Support Platform
-        </span>
-        <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 tracking-tight max-w-3xl mx-auto">
-          Report and resolve ICT faults across the Commission
-        </h1>
-        <p className="mt-6 text-lg text-gray-600 max-w-2xl mx-auto">
-          TIMS is the Tobacco Commission&apos;s internal ticket management system —
-          built to keep every department productive and every fault accountable.
-        </p>
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <Link
-            href="/login"
-            className="px-6 py-3 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md shadow-sm"
-          >
-            Sign in to your account
-          </Link>
-          <Link
-            href="/register"
-            className="px-6 py-3 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 rounded-md"
-          >
-            Create an account
-          </Link>
-        </div>
-
-        {/* Demo creds */}
-        <div className="mt-10 inline-block rounded-lg border border-gray-200 bg-gray-50 px-6 py-4 text-left text-xs text-gray-600">
-          <p className="font-semibold text-gray-800 mb-1">Try the demo:</p>
-          <p>
-            <span className="font-medium">Admin:</span> admin@tc.mw · password
-          </p>
-          <p>
-            <span className="font-medium">ICT Officer:</span> officer@tc.mw · password
-          </p>
-          <p>
-            <span className="font-medium">Staff:</span> staff@tc.mw · password
-          </p>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="bg-gray-50 border-y border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 text-center">
-            Everything you need to manage ICT faults
-          </h2>
-          <p className="mt-3 text-center text-gray-600 max-w-2xl mx-auto">
-            From reporting to resolution — one platform for all Commission staff.
-          </p>
-
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((f) => (
-              <div
-                key={f.title}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm p-6"
-              >
-                <div className="text-3xl mb-3">{f.icon}</div>
-                <h3 className="font-semibold text-gray-900">{f.title}</h3>
-                <p className="text-sm text-gray-600 mt-1">{f.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
-        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">
-          Ready to report a fault?
-        </h2>
-        <p className="mt-3 text-gray-600">
-          Sign in with your Commission email to get started.
-        </p>
-        <Link
-          href="/login"
-          className="mt-8 inline-block px-6 py-3 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md shadow-sm"
-        >
-          Sign in now
-        </Link>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
-          <p>© {currentYear ?? 2026} The Tobacco Commission. All rights reserved.</p>
-          <p>TIMS — Tobacco ICT Management System</p>
-        </div>
-      </footer>
+  return <section className="mx-auto max-w-6xl space-y-8">
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#a47b18]">Tobacco Commission ICT</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-[#16392b]">Overview</h1><p className="mt-2 text-sm text-gray-600">A clear view of your support workload and service health.</p></div><Link href="/tickets/new" className="inline-flex items-center gap-2 rounded-md bg-[#0b5d43] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#084936]"><Plus size={17} /> New ticket</Link></div>
+    {!stats && <div className="rounded-lg border border-[#dfe8df] bg-white px-4 py-3 text-sm text-gray-500">Loading overview data...</div>}
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map(({ label, value, icon: Icon, tone }) => <div key={label} className="rounded-xl border border-[#dfe8df] bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><p className="text-sm font-medium text-gray-600">{label}</p><span className={`flex h-9 w-9 items-center justify-center rounded-lg ${tone}`}><Icon size={18} /></span></div><p className="mt-4 text-3xl font-bold text-[#16392b]">{value}</p></div>)}</div>
+    <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="rounded-xl border border-[#dfe8df] bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-[#16392b]">Ticket status</h2><p className="mt-1 text-sm text-gray-500">Current workload across the support desk.</p></div><Link href="/tickets" className="inline-flex items-center gap-1 text-sm font-semibold text-[#0b5d43]">View desk <ArrowRight size={15} /></Link></div><div className="mt-6 space-y-4">{[['New', data.new, 'bg-blue-500'], ['In progress', data.in_progress, 'bg-amber-500'], ['Pending', data.pending, 'bg-gray-400'], ['Resolved', data.resolved, 'bg-emerald-500']].map(([label, value, color]) => <div key={label as string}><div className="mb-1 flex justify-between text-sm"><span className="text-gray-600">{label as string}</span><strong className="text-[#16392b]">{value as number}</strong></div><div className="h-2 overflow-hidden rounded-full bg-gray-100"><div className={`h-full rounded-full ${color}`} style={{ width: `${data.total ? Math.min(100, ((value as number) / data.total) * 100) : 0}%` }} /></div></div>)}</div></div>
+      <div className="rounded-xl border border-[#dfe8df] bg-[#0b5d43] p-6 text-white shadow-sm"><p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#d9b85a]">Priority watch</p><h2 className="mt-3 text-2xl font-bold">{data.critical} critical {data.critical === 1 ? 'ticket' : 'tickets'}</h2><p className="mt-2 text-sm text-white/70">Critical tickets need immediate attention to protect response targets.</p><Link href="/tickets?priority=critical" className="mt-6 inline-flex items-center gap-2 rounded-md bg-[#d9b85a] px-4 py-2 text-sm font-bold text-[#0b5d43]">Open priority queue <ArrowRight size={15} /></Link></div>
     </div>
-  );
+  </section>;
 }
